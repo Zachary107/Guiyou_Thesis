@@ -1,0 +1,59 @@
+---
+title: "co2 process"
+output: html_document
+date: "2023-04-07"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+# Load necessary packages
+if (!require("readxl")) {
+  install.packages("readxl")
+}
+library(readxl)
+
+if (!require("dplyr")) {
+  install.packages("dplyr")
+}
+library(dplyr)
+
+if (!require("zoo")) {
+  install.packages("zoo")
+}
+library(zoo)
+
+# Step 1: Read the data from the Excel file
+file_name <- "co2monthly.xlsx"
+monthly_co2_data <- read_xlsx(file_name)
+
+# Step 2: Convert the date column to a proper date format
+monthly_co2_data <- monthly_co2_data %>%
+  mutate(date = as.Date(paste0(date, "01"), format = "%Y%m%d"))
+
+# Step 3: Create a new column representing the year and quarter
+monthly_co2_data <- monthly_co2_data %>%
+  mutate(year_quarter = as.yearqtr(date, format = "%Y-%m-%d"))
+
+# Step 4: Group the data by the year and quarter and sum the CO2 emissions for each group
+quarterly_co2_data <- monthly_co2_data %>%
+  filter(format(date, "%m") != "13") %>%
+  group_by(year_quarter) %>%
+  summarise(co2 = sum(co2, na.rm = TRUE))
+
+# Step 5: Export the resulting data frame to an Excel file
+if (!require("writexl")) {
+  install.packages("writexl")
+}
+library(writexl)
+
+output_file_name <- "quarterly_co2_data.xlsx"
+write_xlsx(quarterly_co2_data, output_file_name)
+
+# Print a message to confirm the file has been saved
+cat("The quarterly_co2_data data frame has been saved as", output_file_name)
+
+```

@@ -1,0 +1,271 @@
+---
+title: "honor thesis"
+output:
+  html_document: default
+  pdf_document:
+    latex_engine: xelatex
+date: "2023-03-07"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tseries)
+library(vars)
+library(tidyverse)
+library(forecast)
+library(urca)
+library(lmtest)
+
+# Define a function to calculate RMSE for different filter sizes
+smooth_RMSE <- function(data, filter_sizes) {
+  rmse <- numeric(length(filter_sizes))
+  for (i in 1:length(filter_sizes)) {
+    smooth_data <- stats::filter(data, pascal_filter(filter_sizes[i]), sides = 2)
+    rmse[i] <- accuracy(smooth_data, data)[2]
+  }
+  return(rmse)
+}
+
+pascal_filter <- function(n) {
+  pascal_row <- c(1)
+  for (i in 1:(n - 1)) {
+    pascal_row <- c(0, pascal_row) + c(pascal_row, 0)
+  }
+  return(pascal_row / sum(pascal_row))
+}
+
+# Load data and create time series
+data <- read_xlsx("50kk_quarterly_thesis_data.xlsx")
+data$year <- as.Date(paste0(data$year, "-01-01"))
+
+CO2_emission_ts <- ts(data$co2, start = c(1990, 1), end = c(2020, 4), frequency = 4)
+green_patent_index_ts <- ts(data$sum_patentindex, start = c(1990, 1), end = c(2020, 4), frequency = 4)
+gdp_per_ts <- ts(data$gdp_per, start = c(1990, 1), end = c(2020, 4), frequency = 4)
+energy_price_ts <- ts(data$energy_price, start = c(1990, 1), end = c(2020, 4), frequency = 4)
+
+# Define a range of filter sizes to test
+filter_sizes <- 1:10
+
+# Calculate RMSE for different filter sizes for each time series
+rmse_CO2 <- smooth_RMSE(CO2_emission_ts, filter_sizes)
+rmse_green <- smooth_RMSE(green_patent_index_ts, filter_sizes)
+rmse_gdp_per <- smooth_RMSE(gdp_per_ts, filter_sizes)
+rmse_energy_price <- smooth_RMSE(energy_price_ts, filter_sizes)
+
+# Plot RMSE vs. filter size for each time series
+par(mfrow = c(2, 2))
+plot(filter_sizes, rmse_CO2, type = "l", xlab = "Filter Size", ylab = "RMSE", main = "CO2_emission_ts")
+plot(filter_sizes, rmse_green, type = "l", xlab = "Filter Size", ylab = "RMSE", main = "green_patent_index_ts")
+plot(filter_sizes, rmse_gdp_per, type = "l", xlab = "Filter Size", ylab = "RMSE", main = "gdp_per_ts")
+plot(filter_sizes, rmse_energy_price, type = "l", xlab = "Filter Size", ylab = "RMSE", main = "energy_price_ts")
+
+
+# Identify optimal filter size with the minimum RMSE for each time series
+optimal_size_CO2 <- filter_sizes[which.min(rmse_CO2)]
+cat("Optimal filter size for CO2_emission_ts:", optimal_size_CO2, "\n")
+
+optimal_size_green <- filter_sizes[which.min(rmse_green)]
+cat("Optimal filter size for green_patent_index_ts:", optimal_size_green, "\n")
+
+optimal_size_gdp_per <- filter_sizes[which.min(rmse_gdp_per)]
+cat("Optimal filter size for gdp_per_ts:", optimal_size_gdp_per, "\n")
+
+optimal_size_energy_price <- filter_sizes[which.min(rmse_energy_price)]
+cat("Optimal filter size for energy_price_ts:", optimal_size_energy_price, "\n")
+
+
+```
+
+```{r}
+library(tseries)
+library(vars)
+library(tidyverse)
+library(forecast)
+library(urca)
+library(lmtest)
+
+
+# Load data and create time series
+data <- read_xlsx("50kk_quarterly_thesis_data.xlsx")
+data$year <- as.Date(paste0(data$year, "-01-01"))
+
+CO2_emission_ts <- ts(data$co2, start = c(1990, 1), end = c(2020, 4), frequency = 4)
+green_patent_index_ts <- ts(data$sum_patentindex, start = c(1990, 1), end = c(2020, 4), frequency = 4)
+gdp_per_ts <- ts(data$gdp_per, start = c(1990, 1), end = c(2020, 4), frequency = 4)
+energy_price_ts <- ts(data$energy_price, start = c(1990, 1), end = c(2020, 4), frequency = 4)
+
+# Step 1: Data visualization
+autoplot(cbind(CO2_emission_ts, green_patent_index_ts, gdp_per_ts, energy_price_ts), facet = TRUE) +
+  labs(title = "Time Series Plots",
+       x = "Time",
+       y = "Values",
+       color = "Variables")
+
+# pascal filter to selected variables
+# Create Pascal filters of size 9 and size 7
+pascal_filter_9 <- pascal_filter(9)
+
+# Apply Pascal filters to gdp_per and industry_production
+smoothed_gdp_per_ts <- stats::filter(gdp_per_ts, pascal_filter_9, sides = 2)
+
+# View the smoothed time series
+autoplot(cbind(gdp_per_ts), facet = TRUE) +
+  labs(title = "Smoothed Time Series",
+       x = "Time",
+       y = "Values",
+       color = "Variables")
+# trim data after smooth
+# Remove the first 4 observations from each time series
+CO2_emission_ts <- window(CO2_emission_ts,  start = c(1991, 1), end = c(2019, 4))
+green_patent_index_ts <- window(green_patent_index_ts,  start = c(1991, 1), end = c(2019, 4))
+gdp_per_ts <- window(smoothed_gdp_per_ts,  start = c(1991, 1), end = c(2019, 4))
+energy_price_ts <- window(energy_price_ts,  start = c(1991, 1), end = c(2019, 4))
+
+# Step 2: Stationarity test (Augmented Dickey-Fuller test) before log transformation
+all_data <- cbind(CO2_emission_ts, green_patent_index_ts, gdp_per_ts, energy_price_ts)
+adf_results_before_log <- lapply(as.data.frame(all_data), adf.test)
+p_values <- sapply(adf_results_before_log, function(x) x$p.value)
+names(p_values) <- colnames(all_data)
+p_values
+
+
+# Apply log transformation to the rest of the variables
+log_green_patent_index_ts <- log(green_patent_index_ts)
+log_gdp_per_ts <- log(gdp_per_ts)
+log_energy_price_ts <- log(energy_price_ts)
+
+# Combine CO2_emission_ts with the log-transformed variables
+# Apply first differencing to the log-transformed variables except CO2_emission_ts
+d_log_green_patent_index_ts <- diff(log_green_patent_index_ts)
+d_log_gdp_per_ts <- diff(log_gdp_per_ts)
+d_log_energy_price_ts <- diff(log_energy_price_ts)
+
+# Combine the CO2_emission_ts and the differenced variables
+combined_data_diff <- cbind(CO2_emission_ts[-1], d_log_green_patent_index_ts, d_log_gdp_per_ts, d_log_energy_price_ts)
+
+# Estimate the VAR model with the appropriate lag length
+lag_selection <- VARselect(combined_data_diff, lag.max = 4, type = "both")
+selected_lag <- lag_selection$selection[1]
+VAR_model <- VAR(combined_data_diff, p = selected_lag)
+summary(VAR_model)
+
+
+# Step 6: Impulse Response Function
+irf_results <- irf(VAR_model, n.ahead = 4)
+plot(irf_results)
+
+# Step 7: Cointegration test (Johansen test)
+coint_test <- ca.jo(combined_data_diff, type = "eigen", ecdet = "trend", K = 2)
+summary(coint_test)
+
+# Step 8: Granger Causality Test
+# Perform Granger causality tests using the estimated VAR model
+granger_test_CO2 <- causality(VAR_model, cause = "CO2_emission_ts..1.")
+granger_test_patent <- causality(VAR_model, cause = "d_log_green_patent_index_ts")
+granger_test_gdp_per <- causality(VAR_model, cause = "d_log_gdp_per_ts")
+granger_test_energy_price <- causality(VAR_model, cause = "d_log_energy_price_ts")
+
+print(granger_test_CO2)
+print(granger_test_patent)
+print(granger_test_gdp_per)
+print(granger_test_energy_price)
+
+```
+
+```{r}
+# Combine the variables in the desired order
+combined_data_diff <- cbind(d_log_energy_price_ts, d_log_green_patent_index_ts, d_log_gdp_per_ts, CO2_emission_ts[-1])
+
+# Estimate the VAR model with the appropriate lag length
+lag_selection <- VARselect(combined_data_diff, lag.max = 4, type = "both")
+selected_lag <- lag_selection$selection[1]
+VAR_model <- VAR(combined_data_diff, p = selected_lag)
+summary(VAR_model)
+
+# Step 6: Impulse Response Function
+irf_results <- irf(VAR_model, n.ahead = 4)
+plot(irf_results)
+
+# Step 7: Cointegration test (Johansen test)
+coint_test <- ca.jo(combined_data_diff, type = "eigen", ecdet = "trend", K = 2)
+summary(coint_test)
+
+
+
+```
+
+
+
+
+```{r}
+# Load required packages
+library(readxl)
+library(forecast)
+library(vars)
+library(urca)
+library(ggplot2)
+library(tseries)
+library(tsDyn)
+
+# (Your data loading and preprocessing code remains unchanged)
+
+# Estimate the cointegrating relations using the ca.jo function
+coint_test <- ca.jo(combined_data_diff, type = "eigen", ecdet = "trend", K = 2)
+
+# Fit the VECM model using the VECM function from tsDyn package
+VECM_model <- VECM(combined_data_diff, r = 3, lag = 1, estim = "ML", LRinclude = "const") # Use r = 4 since r<=4 is significant
+
+# Obtain the residuals of the VECM model
+resid_VECM <- residuals(VECM_model)
+
+# Estimate the optimal lag for the residual-based VAR model
+lag_selection_resid <- VARselect(resid_VECM, lag.max = 4, type = "both")
+selected_lag_resid <- lag_selection_resid$selection[1]
+
+# Fit a residual-based VAR model
+VAR_resid_model <- VAR(resid_VECM, p = selected_lag_resid)
+summary(VAR_resid_model)
+
+# Impulse Response Function
+irf_results_VECM <- irf(VAR_resid_model, n.ahead = 4)
+plot(irf_results_VECM)
+
+# Granger Causality Test
+granger_test_CO2 <- causality(VAR_resid_model, cause = "CO2_emission_ts..1.")
+granger_test_patent <- causality(VAR_resid_model, cause = "d_log_green_patent_index_ts")
+granger_test_gdp_per <- causality(VAR_resid_model, cause = "d_log_gdp_per_ts")
+granger_test_energy_price <- causality(VAR_resid_model, cause = "d_log_energy_price_ts")
+
+print(granger_test_CO2)
+print(granger_test_patent)
+print(granger_test_gdp_per)
+print(granger_test_energy_price)
+
+```
+
+
+##When use the irf() function with the ortho = TRUE option in R, it automatically calculates the orthogonalized impulse response function based on the Cholesky decomposition of the error variance-covariance matrix, taking into account the ordering of the variables.
+The ordering of the variables is crucial because it determines the contemporaneous relationships between the variables in the model:
+
+The first variable in the ordering is assumed to contemporaneously affect all other variables.
+The second variable is assumed to contemporaneously affect all other variables except the first one.
+The process continues in a similar manner for the rest of the variables in the ordering.
+
+the impulse variable is d_green_patent_index_ts, which means I want to understand the effect of a shock to d_green_patent_index_ts on the response variables d_CO2_emission_ts and d_gdp_per_ts. The orthogonalized impulse response functions will account for the contemporaneous correlations between the shocks when calculating the response of d_CO2_emission_ts and d_gdp_per_ts to the shock in d_green_patent_index_ts.
+
+The coefficients of the lagged variables show the effect of each variable on the other variables in the model. For example, if the coefficient of the lagged green_patent_index variable on the CO2_emission variable is negative, then we can conclude that an increase in green patents is associated with a decrease in CO2 emissions.
+
+The variance-covariance matrix shows the covariance between each variable in the model. A positive covariance between two variables indicates that they tend to move together over time, while a negative covariance indicates that they tend to move in opposite directions.
+
+The impulse response functions show the response of each variable to a one-unit shock in each of the other variables. For example, if the impulse response function for the CO2_emission variable in response to a shock in the green_patent_index variable is negative, then we can conclude that an increase in green patents leads to a decrease in CO2 emissions.
+
+
+since the p-value is smaller than the significance level of 0.05 (assuming a 95% confidence level), we fail to reject the null hypothesis. This means the variables are not cointegrated. I will proceed with a first-difference VAR model. By differencing the data, I transform the non-stationary variables into stationary ones, avoiding the problem of spurious regressions.
+
+
+The Granger Causality test of the whole model is significant. When I use lag=1, the result is insignificant, when I use lag=3 based on Akaike Information Criterion, the result is significant. However, green patent index itself does not granger cause CO2_emission no matter which lag value I choose.
+```{r}
+```

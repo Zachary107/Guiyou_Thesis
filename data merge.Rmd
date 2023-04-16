@@ -1,0 +1,233 @@
+---
+title: "data merge"
+output: html_document
+date: "2023-04-06"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(readr)
+library(dplyr)
+library(lubridate)
+library(zoo)
+```
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(openxlsx)
+
+
+# Load libraries
+library(readxl)
+library(xts)
+library(zoo)
+
+# Load dataset
+data <- read_xlsx("energy_price.xlsx")
+
+# Create date column using Year and Month information
+data_long <- reshape2::melt(data, id.vars = "Year", variable.name = "Month", value.name = "Price")
+data_long$Date <- as.Date(paste(data_long$Year, data_long$Month, "01", sep = "-"), format = "%Y-%b-%d")
+
+# Convert data frame to xts object
+data_xts <- xts(data_long$Price, order.by = data_long$Date)
+
+# Aggregate data to quarterly frequency
+data_quarterly_xts <- apply.quarterly(data_xts, FUN = mean)
+
+# Load the writexl library
+library(writexl)
+
+# Save the data frame as an Excel file
+write_xlsx(data_quarterly_df, "energy_price_quarterly.xlsx")
+
+
+```
+
+
+```{r}
+# Read dataset
+data <- read.csv("lens-export.csv")
+# Convert Publication-Date to Date object
+data$Publication_Date <- as.Date(data$Publication_Date, format = "%Y/%m/%d")
+
+# Create year and quarter columns
+data$year <- year(data$Publication_Date)
+data$quarter <- quarter(data$Publication_Date)
+
+# Calculate the index
+data <- data %>%
+  group_by(year, quarter) %>%
+  mutate(avg_Cited = mean(Cited, na.rm = TRUE),
+         index = Cited / avg_Cited) %>%
+  ungroup()
+
+# Generate output dataframe
+output_data <- data %>%
+  group_by(year, quarter) %>%
+  summarise(sum_index = sum(index, na.rm = TRUE)) %>%
+  mutate(date_info = paste0(year, " Q", quarter))
+
+
+# Install the writexl package if not already installed
+
+install.packages("writexl")
+
+
+# Load the writexl package
+library(writexl)
+
+# Write the output data to an Excel file
+write_xlsx(output_data, "output_data.xlsx")
+
+```
+
+```{r}
+library(readr)
+library(dplyr)
+library(lubridate)
+library(zoo)
+library(stringr)
+library(writexl)
+library(haven)
+library(readxl)
+```
+
+```{r}
+renamed_data <- quarterly_data 
+library(timeDate)
+
+final_data <- renamed_data %>%
+  mutate(
+    time_quarterly = as.Date(`Publication Date`, format = "%Y/%m/%d"),
+    quarter = quarters(time_quarterly)
+  )
+
+```
+
+```{r}
+
+honor_thesis_data <- read_csv("new_data.csv")
+honor_thesis_data <- honor_thesis_data %>%
+  rename(patentnumber = Field2, numberofexternalpatentcitati = Field6)
+
+merged_data <- left_join(honor_thesis_data, final_data, by = "patentnumber")
+
+```
+
+```{r}
+sum(is.na(merged_data$time_quarterly))
+```
+
+```{r}
+# Calculate the average four-quarter ahead citation count for each filing_quarter
+average_citation_data <- final_data %>%
+  group_by(quarter, 'Publication Year') %>%
+  summarise(avg_four_quarter_ahead_citations = mean('Cited by Patent Count', na.rm = TRUE))
+
+# Calculate each patent's relative quality
+patent_relative_quality <- average_citation_data %>%
+  mutate(relative_quality = 'Cited by Patent Count' / avg_four_quarter_ahead_citations)
+
+# Check the resulting data frame
+head(patent_relative_quality)
+```
+
+```{r}
+
+```
+
+
+```{r}
+final_data_renamed <- merged_data %>%
+  mutate(time_cleaned = as.Date(time_cleaned, format = "%Y-%m-%d")) %>%
+  mutate(numberofexternalpatentcitati = as.integer(numberofexternalpatentcitati)) 
+
+average_external_citations <- final_data_renamed %>%
+  mutate(quarter = quarter(time_cleaned)) %>%
+  group_by(quarter, year = year(time_cleaned)) %>%
+  summarise(avg_ext_citations = mean(numberofexternalpatentcitati, na.rm = TRUE))
+
+patentindex_data <- final_data_renamed %>%
+  mutate(quarter = quarter(time_cleaned)) %>%
+  group_by(quarter, year = year(time_cleaned)) %>%
+  left_join(average_external_citations, by = c("quarter", "year")) %>%
+  mutate(patentindex = as.numeric(numberofexternalpatentcitati) / as.numeric(avg_ext_citations)) %>%
+  ungroup()
+
+```
+
+```{r}
+library(tidyr)
+
+# Assuming you already have the 'quarterly_data' data frame with 'year_quarter' variable
+
+# Remove any rows with missing values in the 'year' column
+filtered_quarterly_data <- quarterly_data %>% filter(!is.na(year))
+
+# Create a complete range of year and quarter combinations
+min_year <- min(filtered_quarterly_data$year)
+max_year <- max(filtered_quarterly_data$year)
+all_years <- min_year:max_year
+all_quarters <- 1:4
+all_year_quarters <- expand.grid(year = all_years, quarter = all_quarters)
+all_year_quarters$year_quarter <- paste(all_year_quarters$year, all_year_quarters$quarter, sep = "-")
+
+# Perform a left join with the filtered_quarterly_data data frame
+complete_quarterly_data <- left_join(all_year_quarters, filtered_quarterly_data, by = "year_quarter")
+
+# Replace missing values in sum_patentindex with zeros
+complete_quarterly_data$sum_patentindex[is.na(complete_quarterly_data$sum_patentindex)] <- 0
+
+# Display the updated data frame with complete and consecutive quarters
+head(complete_quarterly_data)
+
+# Load necessary packages
+if (!require("tidyverse")) {
+  install.packages("tidyverse")
+}
+library(tidyverse)
+
+# Assuming you already have the 'complete_quarterly_data' data frame
+
+# Extract year and quarter from year_quarter column
+sorted_complete_quarterly_data <- complete_quarterly_data %>%
+  mutate(year = parse_number(str_extract(year_quarter, "^\\d{4}")),
+         quarter = parse_number(str_extract(year_quarter, "(?<=-)[1-4]"))) %>%
+  arrange(year, quarter)
+
+# Assuming you already have the 'sorted_complete_quarterly_data' data frame
+
+# Drop the year.y and quarter.y columns
+final_complete_quarterly_data <- sorted_complete_quarterly_data %>%
+  select(-c(year.y, quarter.y, year.x, quarter.x))
+
+# Display the resulting data frame
+head(final_complete_quarterly_data)
+
+```
+
+```{r}
+# Load necessary packages
+if (!require("writexl")) {
+  install.packages("writexl")
+}
+library(writexl)
+
+# Assuming you already have the 'final_complete_quarterly_data' data frame
+
+# Set the file name and path
+output_file_name <- "final_complete_quarterly_data.xlsx"
+
+# Export the data frame to an Excel file
+write_xlsx(final_complete_quarterly_data, output_file_name)
+
+# Print a message to confirm the file has been saved
+cat("The final_complete_quarterly_data data frame has been saved as", output_file_name)
+
+```
